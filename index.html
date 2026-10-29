@@ -13,6 +13,7 @@ img { max-width: 100%; }
 [hidden] { display: none !important; }
 </style>
 <title>Sudoku Papel y Lápiz</title>
+<script>try { var t = localStorage.getItem('spl:tema'); if (t === 'light' || t === 'dark' || t === 'diario') document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&family=Kalam:wght@300;400&display=swap">
@@ -36,7 +37,7 @@ img { max-width: 100%; }
   --radius: 6px;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root:not([data-theme="light"]):not([data-theme="diario"]) {
     --page: #11151A; --grid: #1A2028; --paper: #181D23; --ink: #E6E9EC; --ink-2: #A3ADB8;
     --line: #353F49; --birome: #92AAFF; --birome-soft: #232C4E; --grafito: #9DA3AA;
     --margen: #E07A70; --ok: #6CC596; color-scheme: dark;
@@ -46,6 +47,12 @@ img { max-width: 100%; }
   --page: #11151A; --grid: #1A2028; --paper: #181D23; --ink: #E6E9EC; --ink-2: #A3ADB8;
   --line: #353F49; --birome: #92AAFF; --birome-soft: #232C4E; --grafito: #9DA3AA;
   --margen: #E07A70; --ok: #6CC596; color-scheme: dark;
+}
+/* Diario: papel de diario amarillento, tinta de imprenta marrón oscura */
+:root[data-theme="diario"] {
+  --page: #EAE0C8; --grid: #DDD0B2; --paper: #F6EFDD; --ink: #2B2318; --ink-2: #66573F;
+  --line: #CBBC9C; --birome: #22409C; --birome-soft: #DCDDE6; --grafito: #6B6253;
+  --margen: #B0412E; --ok: #3B6E40; color-scheme: light;
 }
 
 html, body { min-height: 100%; }
@@ -78,6 +85,10 @@ button { cursor: pointer; }
 .chip[data-s="live"]::before { background: var(--ok); }
 .chip[data-s="readonly"]::before { background: var(--margen); }
 .chip[data-s="error"]::before { background: var(--margen); }
+.top-der { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.tema { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); padding: 2px; }
+.tema button { border: 0; background: transparent; border-radius: 999px; padding: 2px 10px; font-size: 13px; color: var(--ink-2); line-height: 1.6; touch-action: manipulation; }
+.tema button[aria-checked="true"] { background: var(--ink); color: var(--paper); }
 
 h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance; letter-spacing: -0.015em; margin: 0; }
 .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); font-weight: 600; }
@@ -245,7 +256,15 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
 <div class="wrap">
   <header class="top">
     <button class="brand" id="brand" type="button" aria-label="Ir al inicio"><b>Sudoku</b><i>papel y lápiz</i></button>
-    <span class="chip" id="acceso" data-s="cargando">Conectando…</span>
+    <div class="top-der">
+      <span class="chip" id="acceso" data-s="cargando">Conectando…</span>
+      <div class="tema" id="tema" role="radiogroup" aria-label="Modo visual">
+        <button type="button" role="radio" data-t="auto" aria-checked="true" title="Sigue el modo de tu dispositivo">Auto</button>
+        <button type="button" role="radio" data-t="light" aria-checked="false">Claro</button>
+        <button type="button" role="radio" data-t="dark" aria-checked="false">Oscuro</button>
+        <button type="button" role="radio" data-t="diario" aria-checked="false">Diario</button>
+      </div>
+    </div>
   </header>
 
   <!-- INICIO -->

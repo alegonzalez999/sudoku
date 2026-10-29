@@ -592,6 +592,16 @@ import { connect } from './db.js';
     if (app.room) { show('sala'); renderRoom(); } else show('inicio');
   });
 
+  // ---------- modo visual ----------
+  function setTema(t) {
+    if (t === 'auto') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('spl:tema', t); } catch {}
+    document.querySelectorAll('#tema button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.t === t)));
+  }
+  document.querySelectorAll('#tema button').forEach(b => b.addEventListener('click', () => setTema(b.dataset.t)));
+  setTema(document.documentElement.getAttribute('data-theme') || 'auto');
+
   // ---------- inicio ----------
   $('#alias').value = app.alias;
   $('#alias').addEventListener('change', () => { const v = $('#alias').value.trim(); if (v) { app.alias = v; store.set('spl:alias', v); } });
