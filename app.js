@@ -282,6 +282,7 @@ import { connect } from './db.js';
       g.startedAt = saved.startedAt; g.done = !!saved.done; g.elapsed = saved.elapsed;
     }
     setMode('pen');
+    borrador.load(`spl:b:${app.room.code}:${d.ronda}`);
     $('#j-codigo').textContent = app.room.code;
     $('#j-nivel').textContent = lvName(d.nivel);
     $('#j-ronda').textContent = app.room.local ? '' : 'Ronda ' + d.ronda;
@@ -592,15 +593,173 @@ import { connect } from './db.js';
     if (app.room) { show('sala'); renderRoom(); } else show('inicio');
   });
 
+  // ---------- borrador (texto y dibujos, uno por ronda, guardado en este navegador) ----------
+  const borrador = (() => {
+    const hoja = $('#borr-hoja'), ta = $('#borr-texto'), cv = $('#borr-lienzo'), ctx = cv.getContext('2d');
+    const lb = $('#borr-limpiar');
+    const ANCHO = { birome: 2.2, grafito: 1.6, margen: 2.2 };
+    let key = null, strokes = [], hist = [], tool = 'texto', cur = null, saveT = null, armT = null;
+    const color = c => getComputedStyle(document.documentElement).getPropertyValue('--' + c).trim() || '#555';
+
+    function size() {
+      const r = hoja.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+      const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+      if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { w, h };
+    }
+    function drawStroke(s, w) {
+      const p = s.p; if (!p || !p.length) return;
+      ctx.strokeStyle = color(s.c); ctx.lineWidth = ANCHO[s.c] || 2; ctx.globalAlpha = s.c === 'grafito' ? 0.85 : 1;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(p[0][0] * w, p[0][1]);
+      if (p.length === 1) ctx.lineTo(p[0][0] * w + 0.01, p[0][1]);
+      for (let i = 1; i < p.length - 1; i++) ctx.quadraticCurveTo(p[i][0] * w, p[i][1], (p[i][0] + p[i + 1][0]) / 2 * w, (p[i][1] + p[i + 1][1]) / 2);
+      if (p.length > 1) { const l = p[p.length - 1]; ctx.lineTo(l[0] * w, l[1]); }
+      ctx.stroke(); ctx.globalAlpha = 1;
+    }
+    function render() {
+      const { w, h } = size(); ctx.clearRect(0, 0, w, h);
+      for (const s of strokes) drawStroke(s, w);
+      if (cur && !cur.erasing) drawStroke(cur, w);
+    }
+    function grow() { // la hoja se estira con el texto y con los dibujos
+      ta.style.height = 'auto';
+      let maxY = 0; for (const s of strokes) for (const q of s.p) if (q[1] > maxY) maxY = q[1];
+      ta.style.height = Math.max(ta.scrollHeight, Math.ceil(maxY + 30)) + 'px';
+      render();
+    }
+    function save() { clearTimeout(saveT); saveT = setTimeout(() => { if (key) store.set(key, { t: ta.value, s: strokes }); }, 300); }
+    function setTool(t) {
+      tool = t;
+      document.querySelectorAll('.borr-tools button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === t)));
+      hoja.classList.toggle('dibujo', t !== 'texto'); hoja.classList.toggle('goma', t === 'goma');
+    }
+    function load(k) {
+      key = k; const d = store.get(k) || {};
+      ta.value = d.t || ''; strokes = Array.isArray(d.s) ? d.s : []; hist = []; cur = null;
+      setTool('texto'); requestAnimationFrame(grow);
+    }
+    const pt = e => { const r = cv.getBoundingClientRect(); return [+((e.clientX - r.left) / r.width).toFixed(4), +(e.clientY - r.top).toFixed(1)]; };
+    function erase(e) {
+      const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      const keep = strokes.filter(s => !s.p.some(q => Math.hypot(q[0] * r.width - x, q[1] - y) < 10));
+      if (keep.length !== strokes.length) { strokes = keep; render(); }
+    }
+
+    cv.addEventListener('pointerdown', e => {
+      if (tool === 'texto') return;
+      e.preventDefault(); cv.setPointerCapture(e.pointerId);
+      hist.push({ s: strokes.slice() }); if (hist.length > 60) hist.shift();
+      if (tool === 'goma') { cur = { erasing: true }; erase(e); return; }
+      cur = { c: tool, p: [pt(e)] }; render();
+    });
+    cv.addEventListener('pointermove', e => {
+      if (!cur) return;
+      const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+      if (cur.erasing) { for (const ev of evs.length ? evs : [e]) erase(ev); return; }
+      const w = cv.getBoundingClientRect().width;
+      for (const ev of evs.length ? evs : [e]) {
+        const q = pt(ev), l = cur.p[cur.p.length - 1];
+        if (Math.hypot((q[0] - l[0]) * w, q[1] - l[1]) >= 1.5) cur.p.push(q);
+      }
+      render();
+    });
+    const end = () => {
+      if (!cur) return;
+      if (cur.erasing) { const h = hist[hist.length - 1]; if (h && h.s.length === strokes.length) hist.pop(); }
+      else strokes.push(cur);
+      cur = null; save(); grow();
+    };
+    cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+
+    ta.addEventListener('input', () => { grow(); save(); });
+    document.querySelectorAll('.borr-tools button').forEach(b => b.addEventListener('click', () => {
+      setTool(b.dataset.tool); if (b.dataset.tool === 'texto') ta.focus();
+    }));
+    $('#borr-deshacer').addEventListener('click', () => {
+      const h = hist.pop(); if (!h) return;
+      strokes = h.s; if (h.t !== undefined) ta.value = h.t;
+      save(); grow();
+    });
+    lb.addEventListener('click', () => {
+      if (!lb.classList.contains('aviso-on')) { // confirmación en dos toques
+        lb.classList.add('aviso-on'); lb.textContent = '¿Borrar todo?';
+        clearTimeout(armT); armT = setTimeout(() => { lb.classList.remove('aviso-on'); lb.textContent = 'Limpiar'; }, 3000);
+        return;
+      }
+      clearTimeout(armT); lb.classList.remove('aviso-on'); lb.textContent = 'Limpiar';
+      hist.push({ s: strokes.slice(), t: ta.value }); strokes = []; ta.value = '';
+      save(); grow();
+    });
+    if (window.ResizeObserver) new ResizeObserver(() => render()).observe(hoja);
+    return { load, render };
+  })();
+
   // ---------- modo visual ----------
-  function setTema(t) {
-    if (t === 'auto') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', t);
+  const root = document.documentElement;
+  const TOK = ['page', 'paper', 'ink', 'birome', 'grafito', 'margen'];
+  const DERIV = ['grid', 'line', 'ink-2', 'birome-soft', 'ok'];
+  const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const rgb2hex = a => '#' + a.map(v => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+  const mix = (a, b, t) => { const A = hex2rgb(a), B = hex2rgb(b); return rgb2hex(A.map((v, i) => v + (B[i] - v) * t)); };
+  const lum = h => { const c = hex2rgb(h).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const okHex = c => /^#[0-9a-f]{6}$/i.test(c || '');
+  function derive(b) { // a partir de 6 colores elegidos se calculan las líneas y tonos secundarios
+    const dark = lum(b.paper) < 0.2;
+    return {
+      '--page': b.page, '--paper': b.paper, '--ink': b.ink, '--birome': b.birome, '--grafito': b.grafito, '--margen': b.margen,
+      '--grid': mix(b.page, b.ink, 0.08), '--line': mix(b.paper, b.ink, 0.24), '--ink-2': mix(b.ink, b.paper, 0.3),
+      '--birome-soft': mix(b.paper, b.birome, 0.16), '--ok': dark ? '#6cc596' : '#2b7a4b', 'color-scheme': dark ? 'dark' : 'light',
+    };
+  }
+  function clearCustom() { for (const t of TOK.concat(DERIV)) root.style.removeProperty('--' + t); root.style.removeProperty('color-scheme'); }
+  let customBase = null;
+  try { customBase = JSON.parse(localStorage.getItem('spl:tema-base') || 'null'); } catch {}
+  if (!customBase || !TOK.every(t => okHex(customBase[t]))) customBase = null;
+  function applyCustom(base) {
+    customBase = base;
+    const vars = derive(base);
+    for (const k in vars) root.style.setProperty(k, vars[k]);
+    try { localStorage.setItem('spl:tema-vars', JSON.stringify(vars)); localStorage.setItem('spl:tema-base', JSON.stringify(base)); } catch {}
+    for (const t of TOK) $('#c-' + t).value = base[t];
+    if (app.view === 'juego') borrador.render();
+  }
+  function readTheme(theme) { // lee los 6 colores de un tema de la hoja de estilos
+    const prevT = root.getAttribute('data-theme'), prevS = root.getAttribute('style');
+    clearCustom();
+    if (theme === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', theme);
+    const cs = getComputedStyle(root), base = {};
+    for (const t of TOK) base[t] = cs.getPropertyValue('--' + t).trim().toLowerCase();
+    if (prevT) root.setAttribute('data-theme', prevT); else root.removeAttribute('data-theme');
+    if (prevS) root.setAttribute('style', prevS); else root.removeAttribute('style');
+    return base;
+  }
+  function setTema(t, { abrir = false } = {}) {
+    if (t === 'custom') {
+      const base = customBase || readTheme(root.getAttribute('data-theme') || 'auto'); // arranca del tema que estaba
+      root.setAttribute('data-theme', 'custom');
+      applyCustom(base);
+    } else {
+      clearCustom();
+      if (t === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', t);
+    }
     try { localStorage.setItem('spl:tema', t); } catch {}
     document.querySelectorAll('#tema button').forEach(b => b.setAttribute('aria-checked', String(b.dataset.t === t)));
+    $('#colores').hidden = !(t === 'custom' && abrir);
+    if (app.view === 'juego') borrador.render();
   }
-  document.querySelectorAll('#tema button').forEach(b => b.addEventListener('click', () => setTema(b.dataset.t)));
-  setTema(document.documentElement.getAttribute('data-theme') || 'auto');
+  document.querySelectorAll('#tema button').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.t === 'custom' && root.getAttribute('data-theme') === 'custom') { $('#colores').hidden = !$('#colores').hidden; return; }
+    setTema(b.dataset.t, { abrir: true });
+  }));
+  document.querySelectorAll('.colores-grid input').forEach(inp => inp.addEventListener('input', () => {
+    if (!okHex(inp.value) || !customBase) return;
+    applyCustom({ ...customBase, [inp.dataset.v]: inp.value.toLowerCase() });
+  }));
+  document.querySelectorAll('#colores [data-base]').forEach(b => b.addEventListener('click', () => applyCustom(readTheme(b.dataset.base))));
+  $('#colores-listo').addEventListener('click', () => { $('#colores').hidden = true; });
+  setTema(root.getAttribute('data-theme') || 'auto');
 
   // ---------- inicio ----------
   $('#alias').value = app.alias;
