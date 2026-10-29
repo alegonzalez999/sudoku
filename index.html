@@ -13,11 +13,7 @@ img { max-width: 100%; }
 [hidden] { display: none !important; }
 </style>
 <title>Sudoku Papel y Lápiz</title>
-<script>try {
-  var t = localStorage.getItem('spl:tema'), r = document.documentElement;
-  if (t === 'light' || t === 'dark' || t === 'diario' || t === 'custom') r.setAttribute('data-theme', t);
-  if (t === 'custom') { var v = JSON.parse(localStorage.getItem('spl:tema-vars') || 'null'); if (v) for (var k in v) r.style.setProperty(k, v[k]); }
-} catch (e) {}</script>
+<script>try { var t = localStorage.getItem('spl:tema'); if (t === 'light' || t === 'dark' || t === 'diario') document.documentElement.setAttribute('data-theme', t); } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&family=Kalam:wght@300;400&display=swap">
@@ -93,14 +89,6 @@ button { cursor: pointer; }
 .tema { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); padding: 2px; }
 .tema button { border: 0; background: transparent; border-radius: 999px; padding: 2px 10px; font-size: 13px; color: var(--ink-2); line-height: 1.6; touch-action: manipulation; }
 .tema button[aria-checked="true"] { background: var(--ink); color: var(--paper); }
-/* Colores personalizados */
-.colores { padding: 14px 16px; display: grid; gap: 12px; margin-top: 4px; }
-.colores-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.colores-head h3 { font-size: 17px; }
-.colores-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
-.color-op { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; padding: 4px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--page); cursor: pointer; }
-.color-op input { width: 34px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; flex: none; }
-.colores-pie { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
 
 h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance; letter-spacing: -0.015em; margin: 0; }
 .eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); font-weight: 600; }
@@ -175,37 +163,14 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
 .cover p { margin: 6px 0 0; color: var(--ink-2); }
 
 /* ---------- Juego ---------- */
-.juego { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); grid-template-rows: auto auto 1fr; grid-template-areas: "head head" "board lado" "borr lado"; gap: 22px 28px; align-items: start; padding-top: 10px; }
-.j-board { grid-area: board; }
-.lado { grid-area: lado; }
-.borrador { grid-area: borr; }
-.juego-head { grid-area: head; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.juego { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 28px; align-items: start; padding-top: 10px; }
+.juego-head { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
 .juego-head .meta { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; color: var(--ink-2); font-size: 14px; }
 .btn.mini { padding: 3px 10px; font-size: 13px; font-weight: 500; }
 .juego-head .meta strong { color: var(--ink); font-family: var(--f-display); letter-spacing: .1em; }
 .reloj { font-family: var(--f-display); font-weight: 700; font-size: 34px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; font-variation-settings: "opsz" 96; }
 .reloj.fin { color: var(--ok); }
 .lado { display: grid; gap: 18px; }
-/* Borrador: hoja rayada para escribir y dibujar */
-.borrador { padding: 12px 14px 14px; display: grid; gap: 10px; align-self: start; }
-.borr-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
-.borr-head h3 { font-size: 17px; }
-.borr-tools { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-.borr-tools button { border: 0; border-right: 1px solid var(--line); background: var(--paper); padding: 5px 10px; font-size: 13.5px; display: inline-flex; align-items: center; gap: 6px; touch-action: manipulation; }
-.borr-tools button:last-child { border-right: 0; }
-.borr-tools button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
-.borr-tools .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 1.5px var(--paper); }
-.borr-acc { display: flex; gap: 6px; }
-.borr-acc .btn.aviso-on { border-color: var(--margen); color: var(--margen); }
-.borr-hoja { position: relative; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); overflow: hidden; }
-.borr-hoja textarea { display: block; width: 100%; min-height: 252px; resize: none; overflow: hidden; border: 0; outline: none; margin: 0;
-  padding: 2px 14px 12px; font-family: var(--f-hand); font-size: 18px; line-height: 28px; color: var(--ink);
-  background: repeating-linear-gradient(to bottom, transparent 0 27px, var(--grid) 27px 28px); }
-.borr-hoja textarea::placeholder { color: var(--grafito); opacity: .8; }
-.borr-hoja canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.borr-hoja.dibujo canvas { pointer-events: auto; touch-action: none; cursor: crosshair; }
-.borr-hoja.goma canvas { cursor: cell; }
-.borr-hoja:focus-within { border-color: var(--birome); }
 .modo { display: grid; grid-template-columns: 1fr 1fr; border: 1.5px solid var(--ink); border-radius: var(--radius); overflow: hidden; background: var(--paper); }
 .modo button { border: 0; background: transparent; padding: 9px 6px; font-weight: 600; display: grid; gap: 0; line-height: 1.2; touch-action: manipulation; }
 .modo button small { font-weight: 400; font-size: 11.5px; color: var(--ink-2); }
@@ -270,8 +235,7 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
 @media (max-width: 860px) {
   .inicio { grid-template-columns: minmax(0, 1fr); gap: 28px; }
   .ejemplo { max-width: 420px; }
-  .juego { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: "head" "board" "lado" "borr"; gap: 14px; }
-  .tema button { padding: 2px 8px; font-size: 12.5px; }
+  .juego { grid-template-columns: minmax(0, 1fr); gap: 14px; }
   .juego .board-wrap { max-width: 560px; margin: 0 auto; }
   .lado { grid-template-columns: minmax(0, 1fr); }
   .pad { grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 4px; }
@@ -299,32 +263,9 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
         <button type="button" role="radio" data-t="light" aria-checked="false">Claro</button>
         <button type="button" role="radio" data-t="dark" aria-checked="false">Oscuro</button>
         <button type="button" role="radio" data-t="diario" aria-checked="false">Diario</button>
-        <button type="button" role="radio" data-t="custom" aria-checked="false">Personalizado</button>
       </div>
     </div>
   </header>
-  <section class="sheet colores" id="colores" hidden aria-label="Colores personalizados">
-    <div class="colores-head">
-      <h3>Colores personalizados</h3>
-      <button class="btn ghost mini" id="colores-listo" type="button">Listo</button>
-    </div>
-    <div class="colores-grid">
-      <label class="color-op"><input type="color" id="c-page" data-v="page"> Fondo</label>
-      <label class="color-op"><input type="color" id="c-paper" data-v="paper"> Hoja</label>
-      <label class="color-op"><input type="color" id="c-ink" data-v="ink"> Tinta</label>
-      <label class="color-op"><input type="color" id="c-birome" data-v="birome"> Birome</label>
-      <label class="color-op"><input type="color" id="c-grafito" data-v="grafito"> Lápiz</label>
-      <label class="color-op"><input type="color" id="c-margen" data-v="margen"> Detalles</label>
-    </div>
-    <div class="colores-pie">
-      <span class="muted small">Las líneas y los tonos secundarios se ajustan solos.</span>
-      <span class="row">
-        <button class="btn ghost mini" type="button" data-base="light">Partir de Claro</button>
-        <button class="btn ghost mini" type="button" data-base="dark">Partir de Oscuro</button>
-        <button class="btn ghost mini" type="button" data-base="diario">Partir de Diario</button>
-      </span>
-    </div>
-  </section>
 
   <!-- INICIO -->
   <main id="v-inicio" class="inicio">
@@ -411,7 +352,7 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
       <div class="meta"><span>Sala <strong id="j-codigo">—</strong></span><span id="j-nivel"></span><span id="j-ronda"></span><button class="btn ghost mini" id="ir-sala" type="button">Ir a la sala</button></div>
       <div class="reloj" id="reloj" aria-live="off">00:00</div>
     </div>
-    <div class="j-board">
+    <div>
       <div class="board-wrap">
         <div class="board" id="board" tabindex="0" aria-label="Tablero de sudoku. Flechas para moverte, números para escribir."></div>
         <div class="cover" id="cover" hidden><div><div class="big" id="cover-n">3</div><p id="cover-txt">Preparate…</p></div></div>
@@ -444,26 +385,6 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
         <ol class="filas" id="filas"></ol>
       </section>
     </div>
-    <section class="sheet borrador" aria-label="Borrador">
-      <div class="borr-head">
-        <h3>Borrador</h3>
-        <div class="borr-tools" role="toolbar" aria-label="Herramientas del borrador">
-          <button type="button" data-tool="texto" aria-pressed="true">Texto</button>
-          <button type="button" data-tool="birome" aria-pressed="false"><i class="dot" style="--c: var(--birome)"></i>Birome</button>
-          <button type="button" data-tool="grafito" aria-pressed="false"><i class="dot" style="--c: var(--grafito)"></i>Lápiz</button>
-          <button type="button" data-tool="margen" aria-pressed="false"><i class="dot" style="--c: var(--margen)"></i>Rojo</button>
-          <button type="button" data-tool="goma" aria-pressed="false">Goma</button>
-        </div>
-        <div class="borr-acc">
-          <button class="btn ghost mini" id="borr-deshacer" type="button">Deshacer trazo</button>
-          <button class="btn ghost mini" id="borr-limpiar" type="button">Limpiar</button>
-        </div>
-      </div>
-      <div class="borr-hoja" id="borr-hoja">
-        <textarea id="borr-texto" aria-label="Notas del borrador" placeholder="Anotá lo que quieras: candidatos, cuentas, ideas…" spellcheck="false"></textarea>
-        <canvas id="borr-lienzo" aria-label="Dibujos del borrador"></canvas>
-      </div>
-    </section>
   </main>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
