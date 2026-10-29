@@ -1,0 +1,38 @@
+{
+  "rules": {
+    "salas": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && ((!data.exists() && newData.child('host').val() === auth.uid) || (data.exists() && (data.child('host').val() === auth.uid || !root.child('jugadores/' + $code + '/' + data.child('host').val()).exists())))",
+        ".validate": "$code.matches(/^[A-Z0-9]{5}$/) && newData.hasChildren(['code', 'nivel', 'ronda', 'host', 'creada'])",
+        "code": { ".validate": "newData.val() === $code" },
+        "host": { ".validate": "newData.isString()" },
+        "creada": { ".validate": "newData.isNumber()" },
+        "nivel": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 5" },
+        "nivelProx": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 5" },
+        "ronda": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+        "puzzle": { ".validate": "newData.isString() && newData.val().length === 81" },
+        "solucion": { ".validate": "newData.isString() && newData.val().length === 81" },
+        "inicio": { ".validate": "newData.isNumber()" },
+        "$otro": { ".validate": false }
+      }
+    },
+    "jugadores": {
+      "$code": {
+        ".read": "auth != null && root.child('salas/' + $code).exists()",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && root.child('salas/' + $code).exists()",
+          ".validate": "newData.hasChildren(['alias', 'unido'])",
+          "alias": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 20" },
+          "unido": { ".validate": "newData.isNumber()" },
+          "ronda": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "avance": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100" },
+          "terminado": { ".validate": "newData.isBoolean()" },
+          "tiempo": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "terminadoEn": { ".validate": "newData.isNumber()" },
+          "$otro": { ".validate": false }
+        }
+      }
+    }
+  }
+}
