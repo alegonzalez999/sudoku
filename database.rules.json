@@ -14,6 +14,8 @@
         "puzzle": { ".validate": "newData.isString() && newData.val().length === 81" },
         "solucion": { ".validate": "newData.isString() && newData.val().length === 81" },
         "inicio": { ".validate": "newData.isNumber()" },
+        "modo": { ".validate": "newData.val() === 'comp' || newData.val() === 'coop'" },
+        "modoProx": { ".validate": "newData.val() === 'comp' || newData.val() === 'coop'" },
         "$otro": { ".validate": false }
       }
     },
@@ -30,6 +32,33 @@
           "terminado": { ".validate": "newData.isBoolean()" },
           "tiempo": { ".validate": "newData.isNumber() && newData.val() >= 0" },
           "terminadoEn": { ".validate": "newData.isNumber()" },
+          "color": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5" },
+          "$otro": { ".validate": false }
+        }
+      }
+    },
+    "tableros": {
+      "$code": {
+        ".read": "auth != null && root.child('salas/' + $code).exists()",
+        "$ronda": {
+          "celdas": {
+            "$celda": {
+              ".write": "auth != null && root.child('jugadores/' + $code + '/' + auth.uid).exists() && root.child('salas/' + $code + '/modo').val() === 'coop' && !root.child('tableros/' + $code + '/' + $ronda + '/fin').exists()",
+              ".validate": "$ronda.matches(/^r[0-9]+$/) && $celda.matches(/^c([0-9]|[1-7][0-9]|80)$/) && newData.hasChildren(['v', 'by'])",
+              "v": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 9" },
+              "by": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 128" },
+              "c": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5" },
+              "$otro": { ".validate": false }
+            }
+          },
+          "fin": {
+            ".write": "auth != null && !data.exists() && root.child('jugadores/' + $code + '/' + auth.uid).exists()",
+            ".validate": "$ronda.matches(/^r[0-9]+$/) && newData.hasChildren(['tiempo', 'por', 'en'])",
+            "tiempo": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+            "por": { ".validate": "newData.val() === auth.uid" },
+            "en": { ".validate": "newData.isNumber()" },
+            "$otro": { ".validate": false }
+          },
           "$otro": { ".validate": false }
         }
       }

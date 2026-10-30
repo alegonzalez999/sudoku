@@ -31,6 +31,8 @@ img { max-width: 100%; }
   --grafito: #6A7078;     /* lápiz */
   --margen: #CF4B42;      /* margen rojo del cuaderno */
   --ok: #2B7A4B;
+  /* biromes de cada jugador en el modo cooperativo: azul, rojo, verde, violeta, naranja, turquesa */
+  --pen-0: #2443B5; --pen-1: #C0392B; --pen-2: #1E7A46; --pen-3: #7A3DB8; --pen-4: #B85C0A; --pen-5: #0B7A85;
   --f-display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --f-ui: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-hand: "Kalam", "Segoe Print", "Comic Sans MS", cursive;
@@ -41,18 +43,21 @@ img { max-width: 100%; }
     --page: #11151A; --grid: #1A2028; --paper: #181D23; --ink: #E6E9EC; --ink-2: #A3ADB8;
     --line: #353F49; --birome: #92AAFF; --birome-soft: #232C4E; --grafito: #9DA3AA;
     --margen: #E07A70; --ok: #6CC596; color-scheme: dark;
+    --pen-0: #92AAFF; --pen-1: #FF8C7F; --pen-2: #6FD39C; --pen-3: #C6A3FF; --pen-4: #FFB36B; --pen-5: #5CD0DA;
   }
 }
 :root[data-theme="dark"] {
   --page: #11151A; --grid: #1A2028; --paper: #181D23; --ink: #E6E9EC; --ink-2: #A3ADB8;
   --line: #353F49; --birome: #92AAFF; --birome-soft: #232C4E; --grafito: #9DA3AA;
   --margen: #E07A70; --ok: #6CC596; color-scheme: dark;
+  --pen-0: #92AAFF; --pen-1: #FF8C7F; --pen-2: #6FD39C; --pen-3: #C6A3FF; --pen-4: #FFB36B; --pen-5: #5CD0DA;
 }
 /* Diario: papel de diario amarillento, tinta de imprenta marrón oscura */
 :root[data-theme="diario"] {
   --page: #EAE0C8; --grid: #DDD0B2; --paper: #F6EFDD; --ink: #2B2318; --ink-2: #66573F;
   --line: #CBBC9C; --birome: #22409C; --birome-soft: #DCDDE6; --grafito: #6B6253;
   --margen: #B0412E; --ok: #3B6E40; color-scheme: light;
+  --pen-0: #22409C; --pen-1: #A12F22; --pen-2: #2B6A35; --pen-3: #683391; --pen-4: #A0510F; --pen-5: #0F6B6C;
 }
 
 html, body { min-height: 100%; }
@@ -123,6 +128,14 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
 .nivel-opts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .nivel-opt { position: relative; }
 .nivel-opt input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.modo-opts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.modo-opts .opt { text-align: left; padding: 10px 12px; font-size: 15px; gap: 3px; }
+.modo-opts .opt small { font-size: 12.5px; line-height: 1.3; }
+.mi-color { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatches button { width: 30px; height: 30px; border-radius: 50%; padding: 0; border: 3px solid var(--paper); background: var(--c); box-shadow: 0 0 0 1px var(--line); touch-action: manipulation; }
+.swatches button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+.swatches button:disabled { opacity: .22; cursor: default; }
 .nivel-opt .opt { display: grid; gap: 4px; height: 100%; padding: 9px 8px 8px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--paper); text-align: center; font-weight: 600; font-size: 13.5px; line-height: 1.2; }
 .nivel-opt .opt small { font-weight: 400; color: var(--ink-2); font-size: 11.5px; }
 .nivel-opt .dots { letter-spacing: 2px; font-size: 10px; color: var(--birome); }
@@ -149,10 +162,10 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
 .cell.r2, .cell.r5 { border-bottom: 2px solid var(--ink); }
 .cell.c8 { border-right: 0; }
 .cell.r8 { border-bottom: 0; }
-.cell.sel::after { content: ""; position: absolute; inset: 1px; border: 2px solid var(--birome); border-radius: 2px; pointer-events: none; }
+.cell.sel::after { content: ""; position: absolute; inset: 1px; border: 2px solid var(--yo, var(--birome)); border-radius: 2px; pointer-events: none; }
 .board.ro .cell { cursor: default; }
 .g { font-family: var(--f-display); font-weight: 500; font-size: 6.4cqi; color: var(--ink); line-height: 1; font-variation-settings: "opsz" 40; }
-.p { font-family: var(--f-hand); font-weight: 400; font-size: 7.4cqi; color: var(--birome); line-height: 1; transform: translate(var(--dx, 0), var(--dy, 0)) rotate(var(--r, 0deg)); }
+.p { font-family: var(--f-hand); font-weight: 400; font-size: 7.4cqi; color: var(--pc, var(--birome)); line-height: 1; transform: translate(var(--dx, 0), var(--dy, 0)) rotate(var(--r, 0deg)); }
 .n { position: absolute; inset: 6%; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); }
 .n i { font-style: normal; font-family: var(--f-hand); font-weight: 300; font-size: 3.05cqi; line-height: 1; color: var(--grafito); display: grid; place-items: center; visibility: hidden; }
 .n i.on { visibility: visible; }
@@ -181,7 +194,7 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
 .pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .pad button { aspect-ratio: 1.35; border: 1.5px solid var(--line); background: var(--paper); border-radius: var(--radius); font-family: var(--f-display); font-weight: 500; font-size: 24px; touch-action: manipulation; }
 .pad.pencil button { font-family: var(--f-hand); font-weight: 300; color: var(--grafito); }
-.pad.pen button { color: var(--birome); font-family: var(--f-hand); }
+.pad.pen button { color: var(--yo, var(--birome)); font-family: var(--f-hand); }
 .acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .atajos { font-size: 12.5px; color: var(--ink-2); margin: 0; }
 .atajos kbd { font-family: var(--f-ui); font-size: 11.5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--paper); }
@@ -194,6 +207,8 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
 .filas { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .fila { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); }
 .fila:last-child { border-bottom: 0; }
+.dot-pen { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: var(--c); flex: none; box-shadow: 0 0 0 1.5px var(--paper), 0 0 0 2.5px var(--c); }
+.fila .pos .dot-pen { vertical-align: middle; }
 .fila .pos { font-family: var(--f-display); font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .fila .quien { min-width: 0; display: grid; gap: 3px; }
 .fila .nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
@@ -223,6 +238,7 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
 .gente { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
 .gente li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
 .gente li:last-child { border-bottom: 0; }
+.gente .quien { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .gente .nom { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .gente .rol { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
 .gente .rol.host { color: var(--margen); font-family: var(--f-hand); font-size: 15px; }
@@ -327,6 +343,18 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
     <div class="sala-grid">
       <section class="sheet sala-box">
         <h2 id="sala-titulo">Partida</h2>
+        <fieldset class="niveles" id="sala-modos-box" hidden>
+          <legend class="lbl">Modo</legend>
+          <div class="modo-opts">
+            <label class="nivel-opt"><input type="radio" name="smodo" id="smodo-comp" value="comp"><span class="opt">Competencia<small>Cada uno en su tablero. Gana el más rápido.</small></span></label>
+            <label class="nivel-opt"><input type="radio" name="smodo" id="smodo-coop" value="coop"><span class="opt">Cooperativo<small>Un solo tablero para todos, cada uno con su birome.</small></span></label>
+          </div>
+        </fieldset>
+        <p class="muted" id="sala-modo-txt" hidden></p>
+        <div class="mi-color" id="mi-color" hidden>
+          <span class="lbl">Tu birome</span>
+          <div class="swatches" id="swatches" role="group" aria-label="Color de tu birome"></div>
+        </div>
         <fieldset class="niveles" id="sala-niveles-box">
           <legend class="lbl" id="sala-niveles-lbl">Dificultad</legend>
           <div class="nivel-opts" id="sala-niveles"></div>
@@ -361,7 +389,7 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
     </div>
     <div class="lado">
       <section class="sheet final" id="final" hidden>
-        <span class="eyebrow">Terminaste</span>
+        <span class="eyebrow" id="final-eyebrow">Terminaste</span>
         <div class="tiempo" id="final-tiempo">00:00.0</div>
         <p class="muted" id="final-pos" style="margin:0"></p>
         <div class="row">
@@ -381,7 +409,7 @@ h1, h2, h3 { font-family: var(--f-display); font-weight: 700; text-wrap: balance
       </div>
       <p class="atajos"><kbd>1</kbd>–<kbd>9</kbd> escribir · <kbd>Espacio</kbd> birome/lápiz · <kbd>Shift</kbd>+número nota rápida · <kbd>⌫</kbd> borrar · <kbd>Ctrl</kbd>+<kbd>Z</kbd> deshacer</p>
       <section class="sheet tabla" id="tabla">
-        <h3>Tabla</h3>
+        <h3 id="tabla-tit">Tabla</h3>
         <ol class="filas" id="filas"></ol>
       </section>
     </div>

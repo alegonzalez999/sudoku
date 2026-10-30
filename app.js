@@ -13,6 +13,8 @@ import { connect } from './db.js';
     5: { d: 'Swordfish y más', dots: '●●●●●' },
   };
   const lvName = id => (S.LEVELS.find(l => l.id === +id) || {}).name || '';
+  const PENS = ['Azul', 'Rojo', 'Verde', 'Violeta', 'Naranja', 'Turquesa'];
+  const penVar = c => `var(--pen-${(((c | 0) % PENS.length) + PENS.length) % PENS.length})`;
 
   const store = {
     get(k) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } },
@@ -21,7 +23,7 @@ import { connect } from './db.js';
 
   const app = {
     db: null, user: null, uid: null, access: 'cargando', ready: null,
-    alias: store.get('spl:alias') || '', level: store.get('spl:nivel') || 3,
+    alias: store.get('spl:alias') || '', level: store.get('spl:nivel') || 3, modo: store.get('spl:modo') === 'coop' ? 'coop' : 'comp',
     view: 'inicio', room: null, game: null, players: [], unsubs: [], joinedAt: 0, timer: null,
   };
 
@@ -80,6 +82,69 @@ import { connect } from './db.js';
   const meRef = () => app.db.doc('jugadores/' + app.room.code + '/' + app.uid);
   const canWriteRoom = () => app.access === 'live' && app.room && !app.room.local;
 
+  // ---------- colores y tablero compartido (modo cooperativo) ----------
+  const byJoin = (a, b) => (a.unido || 0) - (b.unido || 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const validColor = c => Number.isInteger(c) && c >= 0 && c < PENS.length;
+  const sameCell = (a, b) => (!a && !b) || (!!a && !!b && a.v === b.v && a.by === b.by);
+  function myColor() { const me = app.players.find(p => p.id === app.uid); return me && validColor(me.color) ? me.color : null; }
+  function colorOf(cell) { // el color actual de quien escribió; si se fue, el que tenía al escribir
+    const p = cell && app.players.find(x => x.id === cell.by);
+    if (p && validColor(p.color)) return p.color;
+    return cell && validColor(cell.c) ? cell.c : 0;
+  }
+  function reconcileColor(room) { // cada jugador con su color; si dos chocan, cambia el que llegó después
+    if (!canWriteRoom() || !room.playersLoaded || room.colorPending != null) return;
+    const me = app.players.find(p => p.id === app.uid); if (!me) return;
+    const others = app.players.filter(p => p.id !== app.uid);
+    const earlier = others.filter(p => byJoin(p, me) < 0).map(p => p.color);
+    if (validColor(me.color) && !earlier.includes(me.color)) return;
+    const taken = new Set(others.map(p => p.color));
+    let c = PENS.findIndex((_, i) => !taken.has(i));
+    if (c < 0) c = Math.max(0, PENS.findIndex((_, i) => !earlier.includes(i)));
+    room.colorPending = c;
+    meRef().update({ color: c }).catch(() => {}).finally(() => { room.colorPending = null; });
+  }
+  function pickColor(c) {
+    if (!canWriteRoom() || !validColor(c) || app.players.some(p => p.id !== app.uid && p.color === c)) return;
+    meRef().update({ color: c }).catch(() => toast('No se pudo cambiar el color.'));
+  }
+  function watchBoard(room, d) {
+    if (d.modo !== 'coop' || !d.ronda || !app.db) return;
+    if (room.coop && room.coop.ronda === d.ronda) return;
+    if (room.coopUnsub) room.coopUnsub();
+    const st = room.coop = { ronda: d.ronda, cells: {}, fin: null, loaded: false };
+    room.coopUnsub = app.db.doc(`tableros/${room.code}/r${d.ronda}`).onSnapshot(snap => {
+      if (app.room !== room || room.coop !== st) return;
+      const v = (snap.exists && snap.data()) || {};
+      st.cells = v.celdas || {}; st.fin = v.fin || null; st.loaded = true;
+      if (app.game && app.game.coop && app.game.ronda === st.ronda) syncCoop();
+      if (app.view === 'sala') renderRoom();
+    }, () => {});
+  }
+  function coopRows(ronda) {
+    const st = app.room && app.room.coop, cnt = {}, last = {};
+    if (st && st.ronda === ronda) for (const k in st.cells) { const c = st.cells[k]; if (c && c.by) { cnt[c.by] = (cnt[c.by] || 0) + 1; last[c.by] = c; } }
+    const ids = new Set([...app.players.map(p => p.id), ...Object.keys(cnt)]);
+    return [...ids].map(id => {
+      const p = app.players.find(x => x.id === id);
+      return { id, alias: p ? (p.alias || 'Sin nombre') : 'Se fue de la sala', color: p && validColor(p.color) ? p.color : colorOf(last[id]), n: cnt[id] || 0, me: id === app.uid };
+    }).sort((a, b) => b.n - a.n || (a.me ? -1 : b.me ? 1 : 0));
+  }
+  function fillCoopRows(ol, rows) {
+    ol.innerHTML = '';
+    for (const r of rows) {
+      const li = document.createElement('li'); li.className = 'fila' + (r.me ? ' me' : '');
+      const p = document.createElement('span'); p.className = 'pos';
+      const dot = document.createElement('i'); dot.className = 'dot-pen'; dot.style.setProperty('--c', penVar(r.color)); p.appendChild(dot);
+      const q = document.createElement('div'); q.className = 'quien';
+      const nm = document.createElement('div'); nm.className = 'nom'; nm.textContent = r.alias;
+      if (r.me) { nm.style.color = penVar(r.color); const em = document.createElement('em'); em.textContent = 'vos'; nm.appendChild(em); }
+      q.appendChild(nm);
+      const t = document.createElement('span'); t.className = 't'; t.textContent = r.n === 1 ? '1 casilla' : r.n + ' casillas';
+      li.append(p, q, t); ol.appendChild(li);
+    }
+  }
+
   // Cola de escritura del propio jugador: una escritura a la vez, juntando cambios
   const writer = (() => {
     let pending = null, busy = false, t = null;
@@ -90,7 +155,8 @@ import { connect } from './db.js';
       try { await meRef().update(patch); }
       catch (e) {
         // si el registro del jugador no existía (o se borró), se vuelve a crear completo
-        try { await meRef().set({ alias: app.alias, unido: app.joinedAt || Date.now(), ...patch }); } catch {}
+        const color = myColor();
+        try { await meRef().set({ alias: app.alias, unido: app.joinedAt || Date.now(), ...(color != null ? { color } : {}), ...patch }); } catch {}
       }
       busy = false;
       if (pending) flush();
@@ -144,10 +210,10 @@ import { connect } from './db.js';
     const h = S.hashSeed('j' + i);
     return { r: ((h % 9) - 4) * 0.9 + 'deg', dx: (((h >> 4) % 5) - 2) * 0.35 + 'cqi', dy: (((h >> 8) % 5) - 2) * 0.3 + 'cqi' };
   }
-  function paintCell(c, i, given, value, notes, sel) {
+  function paintCell(c, i, given, value, notes, sel, pc) {
     let html = '';
     if (given) html = `<span class="g">${given}</span>`;
-    else if (value) { const j = jitter(i); html = `<span class="p" style="--r:${j.r};--dx:${j.dx};--dy:${j.dy}">${value}</span>`; }
+    else if (value) { const j = jitter(i); html = `<span class="p" style="--r:${j.r};--dx:${j.dx};--dy:${j.dy}${pc ? ';--pc:' + pc : ''}">${value}</span>`; }
     else if (notes) { html = '<div class="n">'; for (let d = 1; d <= 9; d++) html += `<i class="${notes & (1 << (d - 1)) ? 'on' : ''}">${d}</i>`; html += '</div>'; }
     if (c._html !== html) { c.innerHTML = html; c._html = html; }
     c.classList.toggle('sel', !!sel);
@@ -190,7 +256,33 @@ import { connect } from './db.js';
   const playable = () => app.game && app.game.started && !app.game.done;
   function renderBoard() {
     const g = app.game; if (!g) return;
-    for (let i = 0; i < 81; i++) paintCell(boardCells[i], i, g.puzzle[i], g.values[i], g.notes[i], i === g.sel && !g.done);
+    const jv = $('#v-juego');
+    if (g.coop) jv.style.setProperty('--yo', penVar(myColor() ?? 0)); else jv.style.removeProperty('--yo');
+    for (let i = 0; i < 81; i++) {
+      const pc = g.coop && g.owner[i] ? penVar(colorOf(g.owner[i])) : null;
+      paintCell(boardCells[i], i, g.puzzle[i], g.values[i], g.notes[i], i === g.sel && !g.done, pc);
+    }
+  }
+  // Copia el tablero compartido al juego local (las notas de lápiz quedan como están: son de cada uno)
+  function syncCoop() {
+    const g = app.game, st = app.room && app.room.coop;
+    if (!g || !g.coop || !st || st.ronda !== g.ronda) return;
+    for (let i = 0; i < 81; i++) {
+      const cell = g.puzzle[i] ? null : (st.cells['c' + i] || null);
+      g.values[i] = cell ? cell.v : 0; g.owner[i] = cell;
+    }
+    if (st.fin && (!g.done || g.elapsed !== st.fin.tiempo)) {
+      g.done = true; g.elapsed = st.fin.tiempo; stopTimer(); saveGame(); showFinal(); return;
+    }
+    renderBoard(); checkFull(); renderStandings();
+  }
+  function setCell(i, cell) {
+    const g = app.game, st = app.room && app.room.coop; if (!g || !st) return;
+    st.cells = { ...st.cells };
+    if (cell) st.cells['c' + i] = cell; else delete st.cells['c' + i];
+    const ref = app.db.doc(`tableros/${app.room.code}/r${g.ronda}/celdas/c${i}`);
+    (cell ? ref.set(cell) : ref.delete()).catch(() => toast('No se pudo escribir en el tablero compartido.'));
+    syncCoop();
   }
   function saveGame() {
     const g = app.game; if (!g) return;
@@ -202,8 +294,13 @@ import { connect } from './db.js';
     for (let i = 0; i < 81; i++) if (!g.puzzle[i]) { empty++; if (g.values[i]) filled++; }
     return empty ? Math.round((filled / empty) * 100) : 100;
   }
-  function pushHist(i) { const g = app.game; g.hist.push({ i, v: g.values[i], n: g.notes[i] }); if (g.hist.length > 500) g.hist.shift(); }
+  function pushHist(i) {
+    const g = app.game;
+    g.hist.push({ i, v: g.values[i], n: g.notes[i], cell: g.coop ? (app.room.coop.cells['c' + i] || null) : undefined });
+    if (g.hist.length > 500) g.hist.shift();
+  }
   function afterChange() {
+    if (app.game && app.game.coop) { renderBoard(); saveGame(); renderStandings(); return; }
     renderBoard(); saveGame(); checkFull();
     if (canWriteRoom() && app.game && !app.game.done) writer.queue({ ronda: app.game.ronda, avance: filledPct() }, 1800);
     renderStandings();
@@ -216,6 +313,8 @@ import { connect } from './db.js';
     if (pencil) {
       if (g.values[i]) return; // sobre birome no se anota con lápiz
       pushHist(i); g.notes[i] ^= 1 << (d - 1);
+    } else if (g.coop) {
+      pushHist(i); setCell(i, g.values[i] === d ? null : { v: d, by: app.uid, c: myColor() ?? 0 });
     } else {
       pushHist(i); g.values[i] = g.values[i] === d ? 0 : d;
     }
@@ -227,13 +326,16 @@ import { connect } from './db.js';
     if (i == null || g.puzzle[i]) return;
     if (!g.values[i] && !g.notes[i]) return;
     pushHist(i);
-    if (g.values[i]) g.values[i] = 0; else g.notes[i] = 0;
+    if (g.values[i] && g.coop) setCell(i, null);
+    else if (g.values[i]) g.values[i] = 0; else g.notes[i] = 0;
     afterChange();
   }
   function undo() {
     if (!playable()) return;
     const g = app.game, h = g.hist.pop(); if (!h) return;
-    g.values[h.i] = h.v; g.notes[h.i] = h.n; g.sel = h.i;
+    g.notes[h.i] = h.n; g.sel = h.i;
+    if (g.coop) { if (!sameCell(app.room.coop.cells['c' + h.i] || null, h.cell)) setCell(h.i, h.cell); }
+    else g.values[h.i] = h.v;
     afterChange();
   }
   function checkFull() {
@@ -269,26 +371,35 @@ import { connect } from './db.js';
   // Arranca una ronda (con cuenta regresiva salvo que ya estuviera empezada en este dispositivo)
   function startGame(d, { late = false } = {}) {
     stopTimer(); writer.reset();
+    const coop = d.modo === 'coop' && !app.room.local && !!app.db;
+    if (coop) watchBoard(app.room, d);
     const key = `spl:g:${app.room.code}:${d.ronda}`;
     const g = app.game = {
-      key, puzStr: d.puzzle, ronda: d.ronda, nivel: d.nivel,
+      key, puzStr: d.puzzle, ronda: d.ronda, nivel: d.nivel, coop,
       puzzle: S.fromStr(d.puzzle), sol: S.fromStr(d.solucion),
-      values: new Int8Array(81), notes: new Uint16Array(81), sel: 40, mode: 'pen', hist: [],
-      startedAt: null, started: false, done: false, elapsed: null,
+      values: new Int8Array(81), notes: new Uint16Array(81), owner: new Array(81).fill(null), sel: 40, mode: 'pen', hist: [],
+      startedAt: null, started: false, done: false, elapsed: null, finSent: false,
     };
     const saved = store.get(key);
     if (saved && saved.puz === d.puzzle) {
-      g.values = Int8Array.from(saved.values); g.notes = Uint16Array.from(saved.notes);
-      g.startedAt = saved.startedAt; g.done = !!saved.done; g.elapsed = saved.elapsed;
+      g.notes = Uint16Array.from(saved.notes);
+      if (!coop) { g.values = Int8Array.from(saved.values); g.startedAt = saved.startedAt; g.done = !!saved.done; g.elapsed = saved.elapsed; }
     }
+    if (coop) g.startedAt = d.inicio || serverNow(); // en cooperativo el reloj es del equipo
     setMode('pen');
     $('#j-codigo').textContent = app.room.code;
     $('#j-nivel').textContent = lvName(d.nivel);
-    $('#j-ronda').textContent = app.room.local ? '' : 'Ronda ' + d.ronda;
+    $('#j-ronda').textContent = app.room.local ? '' : 'Ronda ' + d.ronda + (coop ? ' · Cooperativo' : '');
     $('#nota-tablero').textContent = ''; $('#final').hidden = true; $('#final-txt').hidden = true;
     $('#reloj').classList.remove('fin'); $('#reloj').textContent = '00:00';
     renderBoard(); renderStandings();
     show('juego');
+    if (coop) {
+      syncCoop();
+      const wait = Math.max(0, Math.min(6000, (d.inicio || 0) - serverNow()));
+      if (wait > 0 && !g.done) countdown(wait); else begin();
+      return;
+    }
     if (g.startedAt) { begin(); return; }
     const delay = late ? 3000 : Math.max(0, Math.min(6000, (d.inicio || 0) - serverNow()));
     countdown(delay);
@@ -312,16 +423,25 @@ import { connect } from './db.js';
     const g = app.game; if (!g) return;
     $('#cover').hidden = true; $('#board').style.visibility = '';
     g.started = true;
-    if (!g.startedAt) { g.startedAt = Date.now(); saveGame(); if (canWriteRoom()) writer.queue({ ronda: g.ronda, avance: filledPct(), terminado: false, tiempo: null }); }
+    if (g.coop) { if (canWriteRoom()) writer.queue({ ronda: g.ronda }); }
+    else if (!g.startedAt) { g.startedAt = Date.now(); saveGame(); if (canWriteRoom()) writer.queue({ ronda: g.ronda, avance: filledPct(), terminado: false, tiempo: null }); }
     if (g.done) { showFinal(); return; }
     $('#board').focus({ preventScroll: true });
-    const tick = () => { if (!app.game || app.game !== g || g.done) return; $('#reloj').textContent = fmt(Date.now() - g.startedAt); };
+    const tick = () => { if (!app.game || app.game !== g || g.done) return; $('#reloj').textContent = fmt((g.coop ? serverNow() : Date.now()) - g.startedAt); };
     tick(); app.timer = setInterval(tick, 250);
     renderBoard(); renderStandings();
   }
   function stopTimer() { clearInterval(app.timer); clearTimeout(app.timer); app.timer = null; }
   function finish() {
     const g = app.game; if (!g || g.done) return;
+    if (g.coop) { // el primero que ve el tablero completo y correcto anota el tiempo del equipo
+      if (g.finSent) return; g.finSent = true;
+      const tiempo = Math.max(0, serverNow() - g.startedAt), st = app.room.coop;
+      app.db.doc(`tableros/${app.room.code}/r${g.ronda}/fin`).set({ tiempo, por: app.uid, en: serverNow() }).catch(() => {
+        setTimeout(() => { if (app.game === g && !g.done && !(st && st.fin)) { g.done = true; g.elapsed = tiempo; stopTimer(); showFinal(); } }, 1500);
+      });
+      return;
+    }
     g.done = true; g.elapsed = Date.now() - g.startedAt;
     stopTimer(); saveGame();
     if (canWriteRoom()) writer.queue({ ronda: g.ronda, avance: 100, terminado: true, tiempo: g.elapsed, terminadoEn: Date.now() }, 0);
@@ -329,6 +449,7 @@ import { connect } from './db.js';
   }
   function showFinal() {
     const g = app.game;
+    $('#final-eyebrow').textContent = g.coop ? 'Lo resolvieron' : 'Terminaste';
     $('#reloj').textContent = fmt(g.elapsed, true); $('#reloj').classList.add('fin');
     $('#final-tiempo').textContent = fmt(g.elapsed, true);
     $('#final-volver').textContent = app.room.local ? 'Otra partida' : 'Volver a la sala';
@@ -338,6 +459,10 @@ import { connect } from './db.js';
   }
   function resultText() {
     const g = app.game; const r = app.room;
+    if (g.coop) {
+      const names = coopRows(g.ronda).filter(x => x.n > 0).map(x => x.alias);
+      return `Sudoku papel y lápiz · Sala ${r.code}, ronda ${g.ronda} (${lvName(g.nivel)}, cooperativo) · ${names.join(', ') || app.alias || 'Equipo'} · ${fmt(g.elapsed, true)}`;
+    }
     const sala = r.local ? `Partida ${r.code}-${g.nivel}` : `Sala ${r.code}, ronda ${g.ronda}`;
     return `Sudoku papel y lápiz · ${sala} (${lvName(g.nivel)}) · ${app.alias || 'Yo'} · ${fmt(g.elapsed, true)}`;
   }
@@ -382,6 +507,16 @@ import { connect } from './db.js';
     const g = app.game, tabla = $('#tabla');
     if (!g || !app.room) return;
     tabla.hidden = app.room.local;
+    $('#tabla-tit').textContent = g.coop ? 'Equipo' : 'Tabla';
+    if (g.coop) {
+      const rows = coopRows(g.ronda);
+      fillCoopRows($('#filas'), rows);
+      if (g.done) {
+        const aportes = rows.filter(x => x.n > 0).map(x => `${x.alias} ${x.n}`).join(' · ');
+        $('#final-pos').textContent = 'Tiempo del equipo.' + (aportes ? ' Casillas: ' + aportes + '.' : '');
+      }
+      return;
+    }
     const rows = rowsFor(g.ronda);
     fillRows($('#filas'), rows);
     if (!rows.length) $('#filas').innerHTML = '<li class="vacia">Todavía nadie escribió nada.</li>';
@@ -426,7 +561,7 @@ import { connect } from './db.js';
       let code = randCode();
       for (let t = 0; t < 4; t++) { const s = await salaRef(code).get(); if (!s.exists) break; code = randCode(); }
       try {
-        await salaRef(code).set({ code, nivel: app.level, nivelProx: app.level, ronda: 0, puzzle: null, solucion: null, inicio: null, host: app.uid, creada: Date.now() });
+        await salaRef(code).set({ code, nivel: app.level, nivelProx: app.level, modoProx: app.modo, ronda: 0, puzzle: null, solucion: null, inicio: null, host: app.uid, creada: Date.now() });
       } catch (e) {
         if (e && e.code === 'quota_exceeded') { $('#err-inicio').textContent = 'La página llegó a su límite de salas guardadas. Avisale a quien la publicó.'; return; }
         $('#err-inicio').textContent = e && e.code === 'denied'
@@ -467,10 +602,12 @@ import { connect } from './db.js';
       } catch (e) { toast('No se pudo anotarte en la sala. Probá salir y volver a entrar.'); }
     }
     const room = app.room;
+    app.unsubs.push(() => { if (room.coopUnsub) room.coopUnsub(); });
     app.unsubs.push(salaRef(code).onSnapshot(snap => {
       if (app.room !== room) return;
       if (!snap.exists) { if (!snap.metadata.fromCache) { toast('Esa sala ya no existe.'); cleanupRoom(); show('inicio'); } return; }
       const d = snap.data(); room.data = d;
+      watchBoard(room, d);
       if (room.base == null) { if (!snap.metadata.fromCache) room.base = d.ronda; }
       else if (d.ronda > room.base) { room.base = d.ronda; if (d.puzzle) startGame(d); }
       if (app.view === 'sala') renderRoom();
@@ -479,7 +616,9 @@ import { connect } from './db.js';
       if (app.room !== room) return;
       app.players = qs.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       if (!qs.metadata.fromCache) room.playersLoaded = true;
-      if (app.view === 'sala') renderRoom(); else renderStandings();
+      reconcileColor(room);
+      if (app.view === 'sala') renderRoom();
+      else { renderStandings(); if (app.game && app.game.coop) renderBoard(); }
     }, () => {}));
   }
 
@@ -493,9 +632,9 @@ import { connect } from './db.js';
         startGame(r.data);
         return;
       }
-      const ronda = (r.data.ronda || 0) + 1, nivel = app.level;
+      const ronda = (r.data.ronda || 0) + 1, nivel = app.level, modo = app.modo;
       const g = await S.generate(r.code + ':' + ronda, nivel);
-      await salaRef(r.code).update({ ronda, nivel, nivelProx: nivel, puzzle: S.toStr(g.puzzle), solucion: S.toStr(g.solution), inicio: serverNow() + 4000 });
+      await salaRef(r.code).update({ ronda, nivel, nivelProx: nivel, modo, modoProx: modo, puzzle: S.toStr(g.puzzle), solucion: S.toStr(g.solution), inicio: serverNow() + 4000 });
     } catch (e) {
       toast(e && e.code === 'denied' ? 'Solo el anfitrión puede arrancar la partida.' : 'No se pudo arrancar. Probá de nuevo.');
     } finally { btn.disabled = false; renderRoom(); }
@@ -528,13 +667,45 @@ import { connect } from './db.js';
     nt.hidden = canPick || !nivelVer; nt.textContent = nivelVer ? (d.ronda ? 'Próxima ronda: ' : 'Dificultad: ') + lvName(nivelVer) : '';
     $('#sala-titulo').textContent = r.local ? 'Partida' : (d.ronda ? `Ronda ${d.ronda}` : 'Antes de empezar');
 
+    // modo de juego (lo elige el anfitrión) y color de birome de cada uno
+    const canPickModo = !r.local && isHost && app.access === 'live';
+    const modoVer = r.local ? 'comp' : canPickModo ? app.modo : (d.modoProx || d.modo || 'comp');
+    $('#sala-modos-box').hidden = !canPickModo;
+    if (canPickModo) $('#smodo-' + app.modo).checked = true;
+    const mt = $('#sala-modo-txt');
+    mt.hidden = r.local || canPickModo;
+    mt.textContent = modoVer === 'coop'
+      ? (d.ronda ? 'Próxima ronda: cooperativa. ' : 'Modo cooperativo: ') + 'un solo tablero para todos, cada uno con su birome. Las notas de lápiz son de cada uno.'
+      : (d.ronda ? 'Próxima ronda: competencia, cada uno en su tablero.' : 'Modo competencia: cada uno en su tablero, gana el más rápido.');
+    const coopR = !r.local && d.modo === 'coop';
+    const showColors = !r.local && (modoVer === 'coop' || coopR);
+    const miColor = $('#mi-color');
+    miColor.hidden = !(showColors && app.access === 'live' && app.players.some(p => p.id === app.uid));
+    if (!miColor.hidden) {
+      const sw = $('#swatches'); sw.innerHTML = '';
+      const mine = myColor();
+      PENS.forEach((name, c) => {
+        const owner = app.players.find(p => p.id !== app.uid && p.color === c);
+        const b = document.createElement('button'); b.type = 'button';
+        b.style.setProperty('--c', penVar(c));
+        b.disabled = !!owner;
+        b.setAttribute('aria-pressed', String(mine === c));
+        b.setAttribute('aria-label', name + (owner ? ` (lo usa ${owner.alias || 'otro jugador'})` : ''));
+        b.title = b.getAttribute('aria-label');
+        b.addEventListener('click', () => pickColor(c));
+        sw.appendChild(b);
+      });
+    }
+    const coopSt = coopR && r.coop && r.coop.ronda === d.ronda ? r.coop : null;
+
     const acc = $('#sala-acciones'); acc.innerHTML = '';
     const espera = $('#sala-espera'); espera.hidden = true;
     const enCurso = d.ronda > 0 && d.puzzle;
     if (enCurso && !r.local) {
       const saved = store.get(`spl:g:${r.code}:${d.ronda}`);
       const b = document.createElement('button'); b.type = 'button'; b.className = 'btn' + (isHost ? '' : ' primary');
-      b.textContent = saved && saved.done ? `Ver resultado de la ronda ${d.ronda}` : saved ? `Volver a la ronda ${d.ronda}` : `Entrar a la ronda ${d.ronda} en curso`;
+      if (coopR) b.textContent = coopSt && coopSt.fin ? `Ver el tablero de la ronda ${d.ronda}` : saved ? `Volver al tablero de la ronda ${d.ronda}` : `Entrar al tablero de la ronda ${d.ronda}`;
+      else b.textContent = saved && saved.done ? `Ver resultado de la ronda ${d.ronda}` : saved ? `Volver a la ronda ${d.ronda}` : `Entrar a la ronda ${d.ronda} en curso`;
       b.addEventListener('click', () => startGame(d, { late: true }));
       acc.appendChild(b);
     }
@@ -547,8 +718,11 @@ import { connect } from './db.js';
       const b = document.createElement('button'); b.type = 'button'; b.className = 'btn primary';
       if (r.local) b.textContent = 'Empezar';
       else {
-        const jugando = app.players.filter(p => p.ronda === d.ronda && !p.terminado && p.id !== app.uid).length;
-        b.textContent = !d.ronda ? 'Empezar' : jugando ? `Nueva ronda (${jugando} siguen jugando)` : 'Nueva ronda';
+        if (coopR) b.textContent = !d.ronda ? 'Empezar' : coopSt && !coopSt.fin ? 'Nueva ronda (el tablero sigue sin resolver)' : 'Nueva ronda';
+        else {
+          const jugando = app.players.filter(p => p.ronda === d.ronda && !p.terminado && p.id !== app.uid).length;
+          b.textContent = !d.ronda ? 'Empezar' : jugando ? `Nueva ronda (${jugando} siguen jugando)` : 'Nueva ronda';
+        }
       }
       b.addEventListener('click', () => hostStart(b));
       acc.appendChild(b);
@@ -560,17 +734,26 @@ import { connect } from './db.js';
     if (!r.local && !list.some(p => p.me)) list.push({ id: 'yo', alias: app.alias, me: true, ro: true });
     for (const p of list) {
       const li = document.createElement('li'); if (p.me) li.className = 'me';
+      const q = document.createElement('span'); q.className = 'quien';
+      if (showColors && validColor(p.color)) { const dot = document.createElement('i'); dot.className = 'dot-pen'; dot.style.setProperty('--c', penVar(p.color)); q.appendChild(dot); }
       const n = document.createElement('span'); n.className = 'nom'; n.textContent = (p.alias || 'Sin nombre') + (p.me ? ' (vos)' : '');
+      if (p.me && showColors && validColor(p.color)) n.style.color = penVar(p.color);
+      q.appendChild(n);
       const rol = document.createElement('span'); rol.className = 'rol';
       if (!r.local && p.id === d.host) { rol.className = 'rol host'; rol.textContent = 'anfitrión'; }
       else if (p.ro) rol.textContent = 'solo mira';
-      li.append(n, rol); ul.appendChild(li);
+      li.append(q, rol); ul.appendChild(li);
     }
     $('#gente-n').textContent = '· ' + list.length;
 
     // última ronda
     const ult = $('#sala-ult');
-    if (!r.local && d.ronda > 0) {
+    if (coopR && d.ronda > 0) {
+      const rows = coopRows(d.ronda).filter(x => x.n > 0);
+      ult.hidden = !rows.length && !(coopSt && coopSt.fin);
+      $('#sala-ult-tit').textContent = `Ronda ${d.ronda} · ${lvName(d.nivel)} · cooperativa` + (coopSt && coopSt.fin ? ` · resuelta en ${fmt(coopSt.fin.tiempo, true)}` : '');
+      fillCoopRows($('#sala-ult-filas'), rows);
+    } else if (!r.local && d.ronda > 0) {
       const rows = rowsFor(d.ronda);
       ult.hidden = !rows.length;
       $('#sala-ult-tit').textContent = `Ronda ${d.ronda} · ${lvName(d.nivel)}`;
@@ -578,6 +761,11 @@ import { connect } from './db.js';
     } else ult.hidden = true;
   }
 
+  document.querySelectorAll('input[name="smodo"]').forEach(inp => inp.addEventListener('change', () => {
+    app.modo = inp.value === 'coop' ? 'coop' : 'comp'; store.set('spl:modo', app.modo);
+    if (app.room && !app.room.local && canWriteRoom()) salaRef(app.room.code).update({ modoProx: app.modo }).catch(() => {});
+    renderRoom();
+  }));
   $('#copiar-codigo').addEventListener('click', () => {
     const r = app.room; if (!r) return;
     copy(r.local ? `${r.code}-${r.data.nivel}` : location.origin + location.pathname + '#sala-' + r.code);
